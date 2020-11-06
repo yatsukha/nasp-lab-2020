@@ -64,6 +64,72 @@ namespace nasp::rb {
       return gp->children[gp->children[0] == p];
     }
     
+    // satisfies legacy forward iterator named requirement
+    template<typename T>
+    class tree_iter {
+      using value_type   = T;
+      using wrapper_type = node_wrapper<T>;
+      
+      wrapper_type current;
+      
+     public:
+      tree_iter() noexcept = default;
+      tree_iter(wrapper_type start) noexcept : current(start) {}
+      
+      tree_iter(tree_iter const&) noexcept = default;
+      tree_iter& operator=(tree_iter const&) noexcept = default;
+      
+      tree_iter(tree_iter&&) noexcept = default;
+      tree_iter& operator=(tree_iter&&) noexcept = default;
+      
+      bool operator==(tree_iter const& other) const noexcept {
+        return current == other.current;
+      }
+      
+      bool operator!=(tree_iter const& other) const noexcept {
+        return !this->operator==(other);
+      }
+      
+      value_type const& operator*() const noexcept {
+        return current->value;
+      }
+      
+      value_type const* operator->() const noexcept {
+        return &current->value;
+      }
+      
+      tree_iter& operator++() noexcept {
+        if (!current) {
+          return *this;
+        }
+        
+        auto const& last_elem = current->value;
+        
+        while (!(last_elem < current->value)) {
+          if (current->children[1] && last_elem < current->children[1]->value) {
+            current = current->children[1];
+          } else {
+            current = current->parent;
+          }
+          
+          if (!current) {
+            break;
+          }
+          while (current->children[0] && last_elem < current->children[0]->value) {
+            current = current->children[0];
+          }
+        }
+        
+        return *this;
+      }
+      
+      tree_iter operator++(int) noexcept {
+        auto old = *this;
+        this->operator++();
+        return old;
+      }
+    };
+    
   }
   
   template<typename T>
@@ -76,18 +142,19 @@ namespace nasp::rb {
     wrapper_type insert_impl(value_type const& key, wrapper_type const curr) noexcept {
       assert(curr);
       
-      if (key == curr->value) {
+      bool less = key < curr->value;
+      bool gt   = curr->value < key;
+      
+      if (!less && !gt) {
         return {};
       }
       
-      auto const right = key > curr->value;
-      
-      if (curr->children[right]) {
-        return insert_impl(key, curr->children[right]);
+      if (curr->children[gt]) {
+        return insert_impl(key, curr->children[gt]);
       }
       
       wrapper_type n{new node{key, true}};
-      curr->children[right] = n;
+      curr->children[gt] = n;
       n->parent = curr;
       
       return n;
@@ -152,26 +219,46 @@ namespace nasp::rb {
         return {};
       }
       
-      if (key == current->value) {
+      bool less = key < current->value;
+      bool gt   = current->value < key;
+      
+      if (!less && !gt) {
         return current;
       }
       
-      return get_node(key, current->children[key > current->value]);
+      return get_node(key, current->children[gt]);
     }
     
    public:
     tree() noexcept = default;
     
-    void insert(value_type const& key) noexcept {
+    detail::tree_iter<value_type> begin() const noexcept {
+      auto jumper = root;
+      if (!jumper) {
+        return {};
+      }
+      
+      while (jumper->children[0]) {
+        jumper = jumper->children[0];
+      }
+      
+      return jumper;
+    }
+    
+    detail::tree_iter<value_type> end() const noexcept {
+      return {};
+    }
+    
+    bool insert(value_type const& key) noexcept {
       if (!root) {
         root = wrapper_type{new node{key}};
-        return;
+        return true;
       }
       
       auto n = insert_impl(key, root);
       
       if (!n) {
-        return;
+        return false;
       }
       
       insert_fix(n);
@@ -181,6 +268,8 @@ namespace nasp::rb {
       }
       
       root = n;
+      
+      return true;
     }
     
     wrapper_type get_root() noexcept {

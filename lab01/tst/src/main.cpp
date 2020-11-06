@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
+#include <iostream>
 #include <vector>
 #include <functional>
 #include <random>
@@ -67,9 +68,12 @@ TEST_CASE("RB-tree stress test") {
   ::nasp::rb::tree<T> tree;
   
   ::container<T> to_insert(100'000);
+  auto inserted_count = 0;
   
   for (auto i = 0; i < to_insert.size(); ++i) {
-    tree.insert(to_insert[i] = dist(mt));
+    if (tree.insert(to_insert[i] = dist(mt))) {
+      ++inserted_count;
+    }
     
     REQUIRE_FALSE(tree.get_root()->red);
     
@@ -83,4 +87,17 @@ TEST_CASE("RB-tree stress test") {
   for (auto&& elem : to_insert) {
     REQUIRE(tree.get(elem));
   }
+  
+  auto size = 0;
+  
+  for (auto iter = tree.begin();;) {
+    ++size;
+    if (auto last = *iter++; iter != tree.end()) {
+      REQUIRE(last < *iter);
+    } else {
+      break;
+    }
+  }
+  
+  REQUIRE(size == inserted_count);
 }
